@@ -136,22 +136,35 @@ const db = firebase.database();
 // ====== USERS ======
 let currentUser = null;
 
-function openRegister(){ document.getElementById('registerOverlay').style.display='block'; document.getElementById('registerBox').style.display='block'; }
-function closeRegister(){ document.getElementById('registerOverlay').style.display='none'; document.getElementById('registerBox').style.display='none'; }
+function openRegister(){
+  document.getElementById('registerOverlay').style.display='block';
+  document.getElementById('registerBox').style.display='block';
+}
+
+function closeRegister(){
+  document.getElementById('registerOverlay').style.display='none';
+  document.getElementById('registerBox').style.display='none';
+}
 
 function registerUser(){
-  const nick = document.getElementById('regUsername').value.trim();
+  const nickInput = document.getElementById('regUsername');
+  const nick = nickInput.value.trim();
   if(!nick) return alert('Введіть нік!');
-  firebase.database().ref('users/'+nick).get().then(snap=>{
-    if(snap.exists()) return alert('Нік вже зайнятий!');
-    const userData = {role:'Гравець', avatar:'https://via.placeholder.com/40', online:true};
-    db.ref('users/'+nick).set(userData).then(()=>{
-      currentUser = nick;
-      localStorage.setItem('forumUser',nick);
-      setupUserInterface();
-      closeRegister();
-    });
-  });
+  
+  const userRef = db.ref('users/' + nick);
+  userRef.get().then(snap => {
+    if(snap.exists()) {
+      alert('Нік вже зайнятий!');
+    } else {
+      const userData = { role:'Гравець', avatar:'https://via.placeholder.com/40', online:true };
+      userRef.set(userData).then(() => {
+        currentUser = nick;
+        localStorage.setItem('forumUser', nick);
+        setupUserInterface();
+        closeRegister();
+      }).catch(err => console.error(err));
+    }
+  }).catch(err => console.error(err));
 }
 
 function setupUserInterface(){
@@ -191,7 +204,15 @@ function logout(){
 
 // ====== FORUM ======
 let currentTab='rules';
-function switchTab(tab){ currentTab=tab; document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active')); event.target.classList.add('active'); render(); }
+function switchTab(tab){ 
+  currentTab=tab; 
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active')); 
+  event.target.classList.add('active'); 
+  render(); 
+}
+
+function openEditor(){overlay.style.display='block';editor.style.display='block';}
+function closeEditor(){overlay.style.display='none';editor.style.display='none';}
 
 function publish(){
   const title = document.getElementById('topicTitle').value.trim();
@@ -205,6 +226,7 @@ function publish(){
   document.getElementById('topicText').value='';
 }
 
+// ====== THREAD ======
 function render(){
   const box = document.getElementById('topics');
   box.innerHTML='';
@@ -222,7 +244,6 @@ function render(){
   });
 }
 
-// ====== THREAD ======
 function openThread(id){
   db.ref('topics/'+currentTab+'/'+id).once('value').then(snap=>{
     const t = snap.val();
@@ -244,7 +265,10 @@ function openThread(id){
   });
 }
 
-function closeThread(){ document.getElementById('threadView').style.display='none'; document.getElementById('forum').style.display='block'; }
+function closeThread(){ 
+  document.getElementById('threadView').style.display='none'; 
+  document.getElementById('forum').style.display='block'; 
+}
 
 // ====== INITIALIZE ======
 setupUserInterface();
