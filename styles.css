@@ -1,0 +1,26 @@
+.post{
+  background:#1f2236;
+  padding:10px;
+  border-radius:8px;
+  margin-bottom:10px;
+}
+.post-header{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+.post-header img{
+  width:36px;
+  height:36px;
+  border-radius:50%;
+}
+.post-actions button{
+  font-size:12px;
+  margin-right:5px;
+}
+#snow{
+  position:fixed;
+  inset:0;
+  pointer-events:none;
+  z-index:9999;
+}
