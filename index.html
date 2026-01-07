@@ -79,6 +79,15 @@ a.external-link{color:#ff4d4d;font-weight:600;text-decoration:underline;}
 <button class="create-btn" onclick="closeEditor()">Скасувати</button>
 </div>
 
+<!-- Регістрація -->
+<div id="registerOverlay"></div>
+<div id="registerBox">
+<h2>Реєстрація</h2>
+<input id="regUsername" placeholder="Введіть нік">
+<button class="create-btn" onclick="registerUser()">Зареєструватися</button>
+<button class="create-btn" onclick="closeRegister()">Скасувати</button>
+</div>
+
 <!-- Ролі -->
 <div id="roleOverlay"></div>
 <div id="roleBox">
@@ -106,120 +115,141 @@ a.external-link{color:#ff4d4d;font-weight:600;text-decoration:underline;}
 <button class="create-btn" onclick="closePlayers()">Закрити</button>
 </div>
 
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
 <script>
-/* ---------- USERS ---------- */
-let users = JSON.parse(localStorage.getItem('forumUsers')||'{}');
-if(!users['Антон Аронів']){
-  users['Антон Аронів']={role:'Адміністратор',avatar:'https://via.placeholder.com/40',online:true};
-  localStorage.setItem('forumUsers',JSON.stringify(users));
+// ====== Firebase Config ======
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+  databaseURL: "https://YOUR_PROJECT_ID-default-rtdb.firebaseio.com",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_PROJECT_ID.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+// ====== USERS ======
+let currentUser = null;
+
+function openRegister(){ document.getElementById('registerOverlay').style.display='block'; document.getElementById('registerBox').style.display='block'; }
+function closeRegister(){ document.getElementById('registerOverlay').style.display='none'; document.getElementById('registerBox').style.display='none'; }
+
+function registerUser(){
+  const nick = document.getElementById('regUsername').value.trim();
+  if(!nick) return alert('Введіть нік!');
+  firebase.database().ref('users/'+nick).get().then(snap=>{
+    if(snap.exists()) return alert('Нік вже зайнятий!');
+    const userData = {role:'Гравець', avatar:'https://via.placeholder.com/40', online:true};
+    db.ref('users/'+nick).set(userData).then(()=>{
+      currentUser = nick;
+      localStorage.setItem('forumUser',nick);
+      setupUserInterface();
+      closeRegister();
+    });
+  });
 }
-let currentUser = localStorage.getItem('forumUser')||'Антон Аронів';
-users[currentUser].online = true;
-localStorage.setItem('forumUsers',JSON.stringify(users));
-document.getElementById('username').textContent = currentUser;
-document.getElementById('userRole').textContent = users[currentUser].role;
-if(users[currentUser].role==='Адміністратор') document.getElementById('rolesBtn').style.display='inline-block';
-let avatarImg = document.getElementById('avatar');
-avatarImg.src = users[currentUser].avatar;
-avatarImg.onclick = ()=>document.getElementById('avatarInput').click();
-document.getElementById('avatarInput').addEventListener('change', function(){
+
+function setupUserInterface(){
+  if(!currentUser) currentUser = localStorage.getItem('forumUser');
+  if(!currentUser) return openRegister();
+  const userRef = db.ref('users/'+currentUser);
+  userRef.update({online:true});
+  userRef.on('value',snap=>{
+    const u = snap.val();
+    if(!u) return;
+    document.getElementById('username').textContent = currentUser;
+    document.getElementById('userRole').textContent = u.role;
+    document.getElementById('avatar').src = u.avatar;
+    if(u.role==='Адміністратор') document.getElementById('rolesBtn').style.display='inline-block';
+  });
+}
+
+// Аватарка
+document.getElementById('avatar').onclick = ()=>document.getElementById('avatarInput').click();
+document.getElementById('avatarInput').addEventListener('change',function(){
   const file=this.files[0];
   if(file){
     const reader=new FileReader();
     reader.onload=function(e){
-      avatarImg.src=e.target.result;
-      users[currentUser].avatar=e.target.result;
-      localStorage.setItem('forumUsers',JSON.stringify(users));
+      document.getElementById('avatar').src=e.target.result;
+      db.ref('users/'+currentUser+'/avatar').set(e.target.result);
     };
     reader.readAsDataURL(file);
   }
 });
-function logout(){ users[currentUser].online=false; localStorage.setItem('forumUsers',JSON.stringify(users)); localStorage.removeItem('forumUser'); location.reload(); }
 
-/* ---------- FORUM ---------- */
+function logout(){
+  db.ref('users/'+currentUser+'/online').set(false);
+  localStorage.removeItem('forumUser');
+  location.reload();
+}
+
+// ====== FORUM ======
 let currentTab='rules';
-function getData(){ return JSON.parse(localStorage.getItem('forumTopics')||'{}'); }
-function saveData(d){ localStorage.setItem('forumTopics',JSON.stringify(d)); }
 function switchTab(tab){ currentTab=tab; document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active')); event.target.classList.add('active'); render(); }
+
+function publish(){
+  const title = document.getElementById('topicTitle').value.trim();
+  const text = document.getElementById('topicText').value.trim();
+  const prefix = document.getElementById('topicPrefix').value;
+  if(!title||!text) return alert('Заповніть все');
+  const id = Date.now();
+  db.ref('topics/'+currentTab+'/'+id).set({id,title,text,prefix,author:currentUser});
+  closeEditor();
+  document.getElementById('topicTitle').value='';
+  document.getElementById('topicText').value='';
+}
+
 function render(){
   const box = document.getElementById('topics');
   box.innerHTML='';
-  const data = getData();
-  (data[currentTab]||[]).forEach(t=>{
-    const div=document.createElement('div');
-    div.className='topic';
-    div.dataset.prefix=t.prefix;
-    div.textContent=t.title;
-    div.onclick = ()=>openThread(t.id);
-    box.appendChild(div);
+  db.ref('topics/'+currentTab).on('value',snap=>{
+    box.innerHTML='';
+    snap.forEach(child=>{
+      const t = child.val();
+      const div = document.createElement('div');
+      div.className='topic';
+      div.dataset.prefix = t.prefix;
+      div.textContent = t.title;
+      div.onclick = ()=>openThread(t.id);
+      box.appendChild(div);
+    });
   });
 }
-function openEditor(){overlay.style.display='block';editor.style.display='block';}
-function closeEditor(){overlay.style.display='none';editor.style.display='none';}
-function publish(){
-  if(!topicTitle.value||!topicText.value) return alert('Заповніть все');
-  const d=getData();
-  if(!d[currentTab]) d[currentTab]=[];
-  d[currentTab].push({id:Date.now(),title:topicTitle.value,text:topicText.value,prefix:topicPrefix.value});
-  saveData(d);
-  closeEditor();
-  topicTitle.value='';
-  topicText.value='';
-  render();
+
+// ====== THREAD ======
+function openThread(id){
+  db.ref('topics/'+currentTab+'/'+id).once('value').then(snap=>{
+    const t = snap.val();
+    if(!t) return;
+    document.getElementById('forum').style.display='none';
+    document.getElementById('threadView').style.display='block';
+    document.getElementById('threadView').innerHTML = `
+      <header style="display:flex;justify-content:space-between;align-items:center;">
+        <span>${t.title}</span>
+        <div>
+          <button onclick="closeThread()">⬅ Назад</button>
+        </div>
+      </header>
+      <div class="container">
+        <p style="white-space:pre-wrap;">${t.text}</p>
+        <p style="font-size:14px;color:#aaa;">Автор: ${t.author}</p>
+      </div>
+    `;
+  });
 }
 
-/* ---------- THREAD with ACTIONS ---------- */
-function openThread(id){
-  const t=Object.values(getData()).flat().find(x=>x.id===id);
-  if(!t) return;
-  document.getElementById('forum').style.display='none';
-  document.getElementById('threadView').style.display='block';
-  document.getElementById('threadView').innerHTML = `
-    <header style="display:flex;justify-content:space-between;align-items:center;">
-      <span>${t.title}</span>
-      <div>
-        <button onclick="closeThread()">⬅ Назад</button>
-        ${['Адміністратор','Модератор'].includes(users[currentUser].role)?'<button onclick="openActions('+t.id+')">Дії</button>':''}
-      </div>
-    </header>
-    <div class="container">
-      <p style="white-space:pre-wrap;">${t.text}</p>
-    </div>
-  `;
-}
 function closeThread(){ document.getElementById('threadView').style.display='none'; document.getElementById('forum').style.display='block'; }
 
-/* ---------- ACTIONS ---------- */
-function openActions(topicId){
-  const overlay=document.getElementById('actionOverlay')||document.createElement('div');
-  overlay.id='actionOverlay';
-  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1000;';
-  document.body.appendChild(overlay);
-  overlay.style.display='block';
-
-  const box=document.getElementById('actionBox')||document.createElement('div');
-  box.id='actionBox';
-  box.style.cssText='position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:90%;max-width:400px;background:#0f111a;padding:20px;border-radius:10px;z-index:1001;';
-  box.innerHTML = `
-    <h2>Дії з темою</h2>
-    <button onclick="deleteTopic(${topicId})">Видалити тему</button>
-    <button onclick="closeActions()">Скасувати</button>
-  `;
-  document.body.appendChild(box);
-  box.style.display='block';
-}
-function closeActions(){ const overlay=document.getElementById('actionOverlay'); const box=document.getElementById('actionBox'); if(overlay) overlay.style.display='none'; if(box) box.style.display='none'; }
-function deleteTopic(topicId){ if(!confirm('Ви точно хочете видалити цю тему?')) return; let data=getData(); Object.keys(data).forEach(tab=>{ data[tab]=data[tab].filter(t=>t.id!==topicId); }); saveData(data); closeActions(); closeThread(); render(); }
-
-/* ---------- ROLE & PLAYERS ---------- */
-function openRoleManager(){ roleOverlay.style.display='block'; roleBox.style.display='block'; const sel=document.getElementById('roleUserSelect'); sel.innerHTML=''; Object.keys(users).forEach(u=>{ if(u!==currentUser) sel.innerHTML+=`<option value="${u}">${u}</option>`; }); }
-function closeRoleManager(){ roleOverlay.style.display='none'; roleBox.style.display='none'; }
-function assignRoleAndPunish(){ const u=document.getElementById('roleUserSelect').value; const r=document.getElementById('roleSelect').value; const p=document.getElementById('punishSelect').value; if(!u) return; users[u].role=r; users[u].muted=p==='mute'; users[u].banned=p==='ban'; localStorage.setItem('forumUsers',JSON.stringify(users)); alert(`Користувачу ${u} призначено роль ${r} та покарання: ${p||'немає'}`); closeRoleManager(); }
-
-function openPlayers(){ playersOverlay.style.display='block'; playersBox.style.display='block'; const tbl=document.getElementById('playersTable'); tbl.innerHTML='<tr><th>Ім\'я</th><th>Статус</th></tr>'; Object.keys(users).forEach(u=>{ const row=document.createElement('tr'); const tdName=document.createElement('td'); tdName.textContent=u; const tdStatus=document.createElement('td'); tdStatus.textContent=users[u].online?'online':'offline'; tdStatus.style.color=users[u].online?'#0f0':'#f00'; row.appendChild(tdName); row.appendChild(tdStatus); tbl.appendChild(row); }); }
-function closePlayers(){ playersOverlay.style.display='none'; playersBox.style.display='none'; }
-
+// ====== INITIALIZE ======
+setupUserInterface();
 render();
+
 </script>
 </body>
 </html>
