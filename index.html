@@ -9,150 +9,113 @@ body{margin:0;font-family:Arial;background:#0f111a;color:#eee}
 header{background:#151826;padding:15px;display:flex;justify-content:space-between}
 button{background:#ff6a00;border:none;color:#fff;padding:8px 12px;border-radius:5px;cursor:pointer}
 .container{max-width:900px;margin:20px auto;background:#151826;padding:15px;border-radius:10px}
-.topic{background:#1f2236;padding:10px;margin:5px 0;border-radius:5px;cursor:pointer}
-.comment{background:#1c1f33;padding:8px;margin-top:5px;border-radius:5px}
-.reply{margin-left:20px;background:#222654}
 input,textarea{width:100%;background:#1f2236;border:none;color:#fff;padding:8px;border-radius:5px;margin:5px 0}
+.topic{background:#1f2236;padding:10px;margin:5px 0;border-radius:5px;cursor:pointer}
 </style>
 </head>
 <body>
 
 <header>
   <b>Форум</b>
-  <span id="user"></span>
+  <span id="userNick"></span>
 </header>
 
 <div class="container" id="auth">
   <h3>Реєстрація</h3>
-  <input id="nick" placeholder="Введіть нік">
-  <button onclick="register()">Зареєструватися</button>
+  <input id="nickInput" placeholder="Введіть нік">
+  <button id="regBtn">Зареєструватися</button>
 </div>
 
 <div class="container" id="forum" style="display:none">
   <h3>Створити тему</h3>
-  <input id="title" placeholder="Заголовок">
-  <textarea id="text" placeholder="Текст"></textarea>
-  <button onclick="createTopic()">Опублікувати</button>
+  <input id="titleInput" placeholder="Заголовок">
+  <textarea id="textInput" placeholder="Текст"></textarea>
+  <button id="createBtn">Опублікувати</button>
   <hr>
   <div id="topics"></div>
 </div>
-
-<div class="container" id="thread" style="display:none"></div>
 
 <!-- Firebase -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
 <script>
+// 🔴 ВСТАВ СВІЙ CONFIG
 const firebaseConfig = {
   apiKey: "YOUR_API_KEY",
   authDomain: "YOUR_PROJECT.firebaseapp.com",
   databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
-  projectId: "YOUR_PROJECT",
+  projectId: "YOUR_PROJECT"
 };
+
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-let user = localStorage.getItem("user");
+// ---------- АВТО-ЛОГІН ----------
+let currentUser = localStorage.getItem("forum_user");
 
-if(user){
+if(currentUser){
   document.getElementById("auth").style.display="none";
   document.getElementById("forum").style.display="block";
-  document.getElementById("user").innerText = user;
+  document.getElementById("userNick").innerText = currentUser;
 }
 
-function register(){
-  const n = nick.value.trim();
-  if(!n) return alert("Введи нік");
-  db.ref("users/"+n).get().then(s=>{
-    if(s.exists()) return alert("Нік зайнятий");
-    db.ref("users/"+n).set({online:true});
-    localStorage.setItem("user",n);
+// ---------- РЕЄСТРАЦІЯ ----------
+document.getElementById("regBtn").onclick = function(){
+  const nick = document.getElementById("nickInput").value.trim();
+
+  if(nick.length < 3){
+    alert("Нік мінімум 3 символи");
+    return;
+  }
+
+  db.ref("users/" + nick).get().then(snap=>{
+    if(snap.exists()){
+      alert("Цей нік вже зайнятий");
+      return;
+    }
+
+    db.ref("users/" + nick).set({
+      created: Date.now()
+    });
+
+    localStorage.setItem("forum_user", nick);
     location.reload();
+  }).catch(err=>{
+    alert("Помилка Firebase");
+    console.error(err);
   });
-}
+};
 
-function createTopic(){
+// ---------- СТВОРЕННЯ ТЕМИ ----------
+document.getElementById("createBtn").onclick = function(){
+  const title = titleInput.value.trim();
+  const text = textInput.value.trim();
+
+  if(!title || !text) return alert("Заповни все");
+
   db.ref("topics").push({
-    title:title.value,
-    text:text.value,
-    author:user,
-    time:Date.now()
+    title,
+    text,
+    author: currentUser,
+    time: Date.now()
   });
-  title.value=""; text.value="";
-}
 
-db.ref("topics").on("value",snap=>{
+  titleInput.value="";
+  textInput.value="";
+};
+
+// ---------- REALTIME ТЕМИ ----------
+db.ref("topics").on("value", snap=>{
   topics.innerHTML="";
   snap.forEach(t=>{
     const d=document.createElement("div");
     d.className="topic";
-    d.innerHTML=`<b>${t.val().title}</b><br>${t.val().author}`;
-    d.onclick=()=>openTopic(t.key);
-    topics.appendChild(d);
+    d.innerHTML=`<b>${t.val().title}</b><br><small>${t.val().author}</small>`;
+    topics.prepend(d);
   });
 });
-
-function openTopic(id){
-  forum.style.display="none";
-  thread.style.display="block";
-  db.ref("topics/"+id).on("value",snap=>{
-    const t=snap.val();
-    thread.innerHTML=`
-      <button onclick="back()">⬅ Назад</button>
-      <h3>${t.title}</h3>
-      <p>${t.text}</p>
-      <small>${t.author}</small>
-      <hr>
-      <input id="cText" placeholder="Коментар">
-      <button onclick="addComment('${id}')">Надіслати</button>
-      <div id="comments"></div>
-    `;
-  });
-
-  db.ref("comments/"+id).on("value",s=>{
-    comments.innerHTML="";
-    s.forEach(c=>{
-      const d=document.createElement("div");
-      d.className="comment";
-      d.innerHTML=`<b>${c.val().author}</b>: ${c.val().text}
-      <br><input placeholder="Відповідь" onkeydown="reply(event,'${id}','${c.key}')">`;
-      comments.appendChild(d);
-
-      db.ref("replies/"+c.key).on("value",r=>{
-        r.forEach(x=>{
-          const rr=document.createElement("div");
-          rr.className="comment reply";
-          rr.innerHTML=`<b>${x.val().author}</b>: ${x.val().text}`;
-          d.appendChild(rr);
-        });
-      });
-    });
-  });
-}
-
-function addComment(id){
-  db.ref("comments/"+id).push({
-    author:user,
-    text:cText.value
-  });
-  cText.value="";
-}
-
-function reply(e,tid,cid){
-  if(e.key==="Enter"){
-    db.ref("replies/"+cid).push({
-      author:user,
-      text:e.target.value
-    });
-    e.target.value="";
-  }
-}
-
-function back(){
-  thread.style.display="none";
-  forum.style.display="block";
-}
 </script>
+
 </body>
 </html>
