@@ -6,23 +6,19 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <style>
-body{margin:0;font-family:Arial;background:#0f111a;color:#eee;overflow-x:hidden}
+body{margin:0;font-family:Arial;background:#0f111a;color:#eee}
 header{background:#151826;padding:15px 20px;display:flex;justify-content:space-between;align-items:center}
 .container{max-width:900px;margin:20px auto;background:#151826;padding:15px;border-radius:10px}
 button{background:#ff6a00;border:none;color:#fff;padding:8px 12px;border-radius:5px;cursor:pointer}
 input,textarea{width:100%;background:#1f2236;border:none;color:#fff;padding:10px;border-radius:5px;margin-bottom:10px}
-.topic{background:#1f2236;padding:10px;margin-bottom:8px;border-radius:5px}
-.comment{background:#0f111a;padding:8px;border-radius:5px;margin:5px 0}
+.topic{background:#1f2236;padding:10px;margin-bottom:10px;border-radius:5px}
+.comment{background:#0f111a;padding:6px;border-radius:5px;margin:5px 0}
 .small{font-size:12px;color:#aaa}
-#authBox{max-width:400px}
-.snow{position:fixed;top:-10px;color:#fff;font-size:14px;animation:fall linear infinite;z-index:9999}
+
+/* SNOW */
+.snow{position:fixed;top:-10px;color:white;font-size:14px;animation:fall linear infinite;pointer-events:none}
 @keyframes fall{to{transform:translateY(110vh)}}
 </style>
-
-<!-- Firebase -->
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 </head>
 
 <body>
@@ -32,7 +28,7 @@ input,textarea{width:100%;background:#1f2236;border:none;color:#fff;padding:10px
   <div id="userBar"></div>
 </header>
 
-<div class="container" id="authBox" style="display:none">
+<div class="container" id="authBox">
   <h3>Реєстрація / Вхід</h3>
   <input id="email" placeholder="Email">
   <input id="password" type="password" placeholder="Пароль">
@@ -47,110 +43,105 @@ input,textarea{width:100%;background:#1f2236;border:none;color:#fff;padding:10px
 </div>
 
 <script>
-/* ===== FIREBASE (ВСТАВ СВОЄ) ===== */
-firebase.initializeApp({
-  apiKey: "ВАШ_API_KEY",
-  authDomain: "ВАШ_AUTH_DOMAIN",
-  databaseURL: "ВАШ_DATABASE_URL",
-  projectId: "ВАШ_PROJECT_ID"
-});
-const auth = firebase.auth();
-const db = firebase.database();
+/* ===== STORAGE ===== */
+let users = JSON.parse(localStorage.getItem("users")||"{}");
+let topics = JSON.parse(localStorage.getItem("topics")||"[]");
+let currentUser = JSON.parse(localStorage.getItem("currentUser")||"null");
+
+const userBar=document.getElementById("userBar");
+const authBox=document.getElementById("authBox");
+const forum=document.getElementById("forum");
+
+/* ===== INIT ===== */
+updateUI();
+renderTopics();
 
 /* ===== AUTH ===== */
-const userBar=document.getElementById("userBar");
-auth.onAuthStateChanged(user=>{
-  if(user){
-    db.ref("users/"+user.uid).once("value").then(s=>{
-      const data=s.val();
-      userBar.innerHTML=`${data.nick} (${data.role}) <button onclick="logout()">Вийти</button>`;
-      forum.style.display="block";
-      authBox.style.display="none";
-      loadTopics();
-    });
-  }else{
-    userBar.innerHTML=`<button onclick="showAuth()">Вхід / Реєстрація</button>`;
-    forum.style.display="none";
-  }
-});
-
-function showAuth(){authBox.style.display="block"}
-
 function register(){
   const emailV=email.value.trim();
   const pass=password.value;
   const nick=nickname.value.trim();
-  const re=/^[А-ЯІЇЄҐ][а-яіїєґ']+\s[А-ЯІЇЄҐ][а-яіїєґ']+$/;
-  if(!re.test(nick)) return alert("Формат ніку: Ім'я Прізвище");
 
-  auth.createUserWithEmailAndPassword(emailV,pass).then(res=>{
-    db.ref("users/"+res.user.uid).set({
-      nick:nick,
-      role:"Гравець"
-    });
-  }).catch(e=>alert(e.message));
+  const re=/^[А-ЯІЇЄҐ][а-яіїєґ']+\s[А-ЯІЇЄҐ][а-яіїєґ']+$/;
+  if(!re.test(nick)) return alert("Нік має бути: Ім'я Прізвище");
+  if(users[emailV]) return alert("Користувач вже існує");
+
+  users[emailV]={email:emailV,password:pass,nick:nick,role:"Гравець"};
+  localStorage.setItem("users",JSON.stringify(users));
+  alert("Акаунт створено");
 }
 
 function login(){
-  auth.signInWithEmailAndPassword(email.value,password.value)
-  .catch(e=>alert(e.message));
+  const u=users[email.value];
+  if(!u||u.password!==password.value) return alert("Невірні дані");
+  currentUser=u;
+  localStorage.setItem("currentUser",JSON.stringify(u));
+  updateUI();
 }
 
-function logout(){auth.signOut()}
+function logout(){
+  currentUser=null;
+  localStorage.removeItem("currentUser");
+  updateUI();
+}
+
+/* ===== UI ===== */
+function updateUI(){
+  if(currentUser){
+    userBar.innerHTML=`${currentUser.nick} (${currentUser.role}) <button onclick="logout()">Вийти</button>`;
+    authBox.style.display="none";
+    forum.style.display="block";
+  }else{
+    userBar.innerHTML="";
+    authBox.style.display="block";
+    forum.style.display="none";
+  }
+}
 
 /* ===== FORUM ===== */
-function loadTopics(){
-  db.ref("topics").on("value",snap=>{
-    topics.innerHTML="";
-    snap.forEach(s=>{
-      const t=s.val();
-      const d=document.createElement("div");
-      d.className="topic";
-      d.innerHTML=`
-        <b>${t.title}</b>
-        <div class="small">від ${t.author}</div>
-        <div id="c_${s.key}"></div>
-        <textarea id="ci_${s.key}" placeholder="Коментар"></textarea>
-        <button onclick="sendComment('${s.key}')">Надіслати</button>
-      `;
-      topics.prepend(d);
-
-      db.ref("comments/"+s.key).on("value",cs=>{
-        const cb=document.getElementById("c_"+s.key);
-        cb.innerHTML="";
-        cs.forEach(c=>{
-          cb.innerHTML+=`<div class="comment"><b>${c.val().author}:</b> ${c.val().text}</div>`;
-        });
-      });
-    });
-  });
-}
-
 function createTopic(){
+  if(!currentUser) return;
   const title=prompt("Заголовок");
   const text=prompt("Текст");
   if(!title||!text) return;
-  auth.currentUser && db.ref("users/"+auth.currentUser.uid).once("value").then(s=>{
-    db.ref("topics").push({
-      title:title,
-      text:text,
-      author:s.val().nick,
-      time:Date.now()
-    });
+
+  topics.push({
+    id:Date.now(),
+    title:title,
+    text:text,
+    author:currentUser.nick,
+    comments:[]
+  });
+  localStorage.setItem("topics",JSON.stringify(topics));
+  renderTopics();
+}
+
+function renderTopics(){
+  const box=document.getElementById("topics");
+  box.innerHTML="";
+  topics.forEach(t=>{
+    const d=document.createElement("div");
+    d.className="topic";
+    d.innerHTML=`
+      <b>${t.title}</b>
+      <div class="small">від ${t.author}</div>
+      <p>${t.text}</p>
+      <div>${t.comments.map(c=>`<div class="comment"><b>${c.author}:</b> ${c.text}</div>`).join("")}</div>
+      ${currentUser?`
+      <textarea id="c_${t.id}" placeholder="Коментар"></textarea>
+      <button onclick="sendComment(${t.id})">Надіслати</button>`:""}
+    `;
+    box.prepend(d);
   });
 }
 
 function sendComment(id){
-  const input=document.getElementById("ci_"+id);
+  const input=document.getElementById("c_"+id);
+  const t=topics.find(x=>x.id===id);
   if(!input.value) return;
-  db.ref("users/"+auth.currentUser.uid).once("value").then(s=>{
-    db.ref("comments/"+id).push({
-      author:s.val().nick,
-      text:input.value,
-      time:Date.now()
-    });
-    input.value="";
-  });
+  t.comments.push({author:currentUser.nick,text:input.value});
+  localStorage.setItem("topics",JSON.stringify(topics));
+  renderTopics();
 }
 
 /* ===== SNOW ===== */
