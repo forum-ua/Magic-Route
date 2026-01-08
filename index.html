@@ -1,95 +1,210 @@
-<!-- Firebase Auth -->
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<title>Форум Чюдово</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+body {margin:0;font-family:Arial,sans-serif;background:#0f111a;color:#eee;overflow-x:hidden;}
+header {background:#151826;padding:15px 20px;display:flex;justify-content:space-between;align-items:center;}
+#headerLeft {display:flex;gap:10px;align-items:center;}
+button {background:#ff6a00;border:none;color:#fff;padding:6px 12px;border-radius:6px;cursor:pointer;}
+button:hover {opacity:.85;}
+.container {max-width:900px;margin:20px auto;background:#151826;padding:15px;border-radius:10px;}
+.topic {background:#1f2236;padding:10px;border-radius:6px;margin-bottom:8px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;}
+.topic:hover {background:#2a2e4a;}
+.tab {padding:8px 12px;background:#1f2236;border-radius:6px;cursor:pointer;user-select:none;}
+.tab.active {background:#ff6a00;}
+#userAccount {display:flex;gap:10px;align-items:center;}
+#avatar {width:40px;height:40px;border-radius:50%;cursor:pointer;border:2px solid #ff6a00;}
+.overlay {display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;}
+.modal {display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#0f111a;padding:20px;border-radius:10px;z-index:1001;width:90%;max-width:500px;}
+input,textarea,select {width:100%;background:#1f2236;border:none;color:#fff;padding:10px;border-radius:6px;margin-bottom:10px;}
+table {width:100%;color:#fff;border-collapse:collapse;}
+td,th {border-bottom:1px solid #333;padding:6px;text-align:left;}
+.snow {position:fixed;top:-10px;color:#fff;animation:fall linear infinite;pointer-events:none;}
+@keyframes fall {to{transform:translateY(100vh);}}
+</style>
+</head>
+<body>
+
+<header>
+  <div id="headerLeft">
+    <b>Форум Чюдово</b>
+    <button id="rolesBtn" onclick="openRoleManager()">Ролі</button>
+    <button onclick="openPlayers()">Гравці</button>
+  </div>
+  <div id="userAccount">
+    <img id="avatar" src="https://via.placeholder.com/40">
+    <span id="username">Гравець</span>
+    <span id="userRole" style="font-size:13px;color:#aaa">Гравець</span>
+    <button onclick="logout()">Вийти</button>
+    <input type="file" id="avatarInput" accept="image/*" hidden>
+  </div>
+</header>
+
+<div class="container" id="forum">
+  <div style="display:flex;gap:10px">
+    <div class="tab active" onclick="switchTab(event,'rules')">Правила</div>
+    <div class="tab" onclick="switchTab(event,'database')">База</div>
+    <div class="tab" onclick="switchTab(event,'senior')">Старші</div>
+  </div>
+  <br>
+  <button onclick="openEditor()">➕ Створити тему</button>
+  <div id="topics"></div>
+</div>
+
+<div id="threadView" class="container" style="display:none"></div>
+
+<!-- overlay -->
+<div class="overlay" id="overlay"></div>
+
+<!-- Modal: Нова тема -->
+<div class="modal" id="editor">
+  <h2>Нова тема</h2>
+  <input id="topicTitle" placeholder="Заголовок">
+  <textarea id="topicText" rows="5" placeholder="Текст"></textarea>
+  <button onclick="publish()">Опублікувати</button>
+  <button onclick="closeEditor()">Скасувати</button>
+</div>
+
+<!-- Modal: Ролі -->
+<div class="modal" id="roleBox">
+  <h2>Управління</h2>
+  <select id="roleUserSelect"></select>
+  <select id="roleSelect">
+    <option>Гравець</option>
+    <option>Модератор</option>
+    <option>Адміністратор</option>
+  </select>
+  <button onclick="assignRole()">Застосувати</button>
+  <button onclick="closeRoleManager()">Закрити</button>
+</div>
+
+<!-- Modal: Гравці -->
+<div class="modal" id="playersBox">
+  <h2>Гравці</h2>
+  <table id="playersTable"></table>
+  <button onclick="closePlayers()">Закрити</button>
+</div>
 
 <script>
-const auth = firebase.auth();
-const db = firebase.database();
-let currentUser = null;
+// --- Локальні дані ---
+let tab = "rules";
+let topicsData = {rules:[], database:[], senior:[]};
+let userData = {nick:"Гравець", role:"Гравець", avatar:"https://via.placeholder.com/40"};
 
-/* ===== REGEX NICK ===== */
-const nickRegex = /^[А-ЯІЇЄҐ][а-яіїєґ']+\s[А-ЯІЇЄҐ][а-яіїєґ']+$/;
+// --- DOM елементи ---
+const avatar = document.getElementById('avatar');
+const avatarInput = document.getElementById('avatarInput');
+const username = document.getElementById('username');
+const userRole = document.getElementById('userRole');
 
-/* ===== REGISTER ===== */
-function registerUser(){
-  const email = document.getElementById('regEmail').value.trim();
-  const pass  = document.getElementById('regPassword').value;
-  const nick  = document.getElementById('regUsername').value.trim();
-
-  if(!email || !pass || !nick) return alert("Заповніть всі поля");
-  if(!nickRegex.test(nick)) return alert("Нік має бути: Ім'я Прізвище");
-
-  auth.createUserWithEmailAndPassword(email, pass)
-    .then(cred=>{
-      return db.ref("users/"+cred.user.uid).set({
-        nick:nick,
-        email:email,
-        role:"Гравець",
-        avatar:"https://via.placeholder.com/40",
-        online:true
-      });
-    })
-    .then(()=>{
-      closeRegister();
-    })
-    .catch(e=>alert(e.message));
+// --- Аватарка ---
+avatar.onclick = ()=> avatarInput.click();
+avatarInput.onchange = e=>{
+  const reader = new FileReader();
+  reader.onload = x => { avatar.src = x.target.result; userData.avatar = x.target.result; }
+  reader.readAsDataURL(e.target.files[0]);
 }
 
-/* ===== LOGIN ===== */
-function loginUser(){
-  const email = document.getElementById('loginEmail').value.trim();
-  const pass  = document.getElementById('loginPassword').value;
+// --- Logout ---
+function logout(){ location.reload(); }
 
-  auth.signInWithEmailAndPassword(email, pass)
-    .catch(e=>alert(e.message));
+// --- Вкладки ---
+function switchTab(e,t){
+  tab = t;
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+  e.currentTarget.classList.add('active');
+  render();
 }
 
-/* ===== AUTH STATE ===== */
-auth.onAuthStateChanged(user=>{
-  if(!user){
-    document.getElementById("forum").style.display="none";
-    return;
-  }
+// --- Теми ---
+function openEditor(){overlay.style.display=editor.style.display="block";}
+function closeEditor(){overlay.style.display=editor.style.display="none";}
 
-  currentUser = user.uid;
+function publish(){
+  const title = topicTitle.value.trim();
+  const text = topicText.value.trim();
+  if(!title || !text) return alert("Введіть заголовок та текст");
+  topicsData[tab].push({title,text,author:userData.nick});
+  closeEditor();
+  render();
+}
 
-  const userRef = db.ref("users/"+user.uid);
-  userRef.update({online:true});
-
-  userRef.on("value",snap=>{
-    const u = snap.val();
-    if(!u) return;
-
-    document.getElementById("username").textContent = u.nick;
-    document.getElementById("userRole").textContent = u.role;
-    document.getElementById("avatar").src = u.avatar;
-    document.getElementById("forum").style.display="block";
-
-    if(u.role==="Адміністратор"){
-      document.getElementById("rolesBtn").style.display="inline-block";
+function render(){
+  const topics = document.getElementById('topics');
+  topics.innerHTML="";
+  topicsData[tab].forEach((t,i)=>{
+    const d = document.createElement("div");
+    d.className = "topic";
+    d.innerHTML = `<span>${t.title}</span>`;
+    if(userData.role !== "Гравець"){
+      const x = document.createElement("button");
+      x.textContent = "❌";
+      x.onclick = e => { e.stopPropagation(); topicsData[tab].splice(i,1); render(); };
+      d.appendChild(x);
     }
+    d.onclick = ()=> openThread(t);
+    topics.appendChild(d);
   });
-});
-
-/* ===== LOGOUT ===== */
-function logout(){
-  if(!currentUser) return;
-  db.ref("users/"+currentUser+"/online").set(false);
-  auth.signOut();
-  location.reload();
 }
 
-/* ===== AVATAR ===== */
-document.getElementById("avatar").onclick=()=>{
-  document.getElementById("avatarInput").click();
-};
+// --- Відкрити тему ---
+function openThread(t){
+  document.getElementById('forum').style.display = 'none';
+  const threadView = document.getElementById('threadView');
+  threadView.style.display = 'block';
+  threadView.innerHTML = `<h2>${t.title}</h2><p>${t.text}</p><button onclick="closeThread()">Назад</button>`;
+}
+function closeThread(){
+  document.getElementById('forum').style.display = 'block';
+  document.getElementById('threadView').style.display = 'none';
+}
 
-document.getElementById("avatarInput").addEventListener("change",function(){
-  const file=this.files[0];
-  if(!file) return;
-  const r=new FileReader();
-  r.onload=e=>{
-    db.ref("users/"+currentUser+"/avatar").set(e.target.result);
-  };
-  r.readAsDataURL(file);
-});
+// --- Ролі ---
+function openRoleManager(){
+  overlay.style.display=roleBox.style.display="block";
+  const select = document.getElementById('roleUserSelect');
+  select.innerHTML="";
+  const opt = document.createElement('option');
+  opt.value = 0; opt.textContent = userData.nick;
+  select.appendChild(opt);
+}
+function closeRoleManager(){overlay.style.display=roleBox.style.display="none";}
+function assignRole(){
+  userData.role = document.getElementById('roleSelect').value;
+  userRole.textContent = userData.role;
+  closeRoleManager();
+}
+
+// --- Гравці ---
+function openPlayers(){
+  overlay.style.display=playersBox.style.display="block";
+  const table = document.getElementById('playersTable');
+  table.innerHTML = "<tr><th>Нік</th><th>Роль</th><th>Статус</th></tr>";
+  table.innerHTML += `<tr><td>${userData.nick}</td><td>${userData.role}</td><td>🟢</td></tr>`;
+}
+function closePlayers(){overlay.style.display=playersBox.style.display="none";}
+
+// --- Клік по overlay закриває модалки ---
+document.getElementById('overlay').onclick = ()=>{
+  document.querySelectorAll('.modal').forEach(m=>m.style.display='none');
+  overlay.style.display='none';
+}
+
+// --- Сніг ---
+for(let i=0;i<40;i++){
+  const s = document.createElement("div");
+  s.className = "snow"; s.textContent="❄";
+  s.style.left=Math.random()*100+"vw";
+  s.style.animationDuration=(3+Math.random()*5)+"s";
+  document.body.appendChild(s);
+}
+
+// --- Початковий рендер ---
+render();
 </script>
+
+</body>
+</html>
