@@ -2,278 +2,157 @@
 <html lang="uk">
 <head>
 <meta charset="UTF-8">
-<title>Форум з темами</title>
+<title>Форум</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
-body{margin:0;font-family:Arial,sans-serif;background:#0f111a;color:#eee;}
-header{background:#151826;padding:15px 20px;display:flex;justify-content:space-between;align-items:center;font-size:24px;font-weight:bold;}
-#headerLeft{display:flex;align-items:center;gap:15px;}
-#headerLeft button{padding:5px 12px;border:none;background:#ff6a00;color:#fff;border-radius:5px;cursor:pointer;font-size:16px;}
-#userAccount{display:flex;align-items:center;gap:10px;}
-#userAccount span{font-size:18px;color:#fff;}
-#userAccount button{padding:5px 10px;border:none;background:#ff6a00;color:#fff;border-radius:5px;cursor:pointer;}
-#userAccount img{width:40px;height:40px;border-radius:50%;object-fit:cover;cursor:pointer;border:2px solid #1976d2;}
-.container{max-width:900px;margin:20px auto;background:#151826;padding:15px;border-radius:10px;}
-.tabs{display:flex;gap:10px;}
-.tab{padding:10px 15px;background:#1f2236;border-radius:5px;cursor:pointer;}
-.tab.active{background:#ff6a00;}
-.create-btn{margin:15px 0;padding:10px 15px;background:#ff6a00;border:none;color:#fff;border-radius:5px;cursor:pointer;}
-.topic{padding:12px;background:#1f2236;margin-bottom:8px;border-radius:5px;cursor:pointer;}
-.topic:hover{background:#2a2e4a;}
-.topic[data-prefix="Головне"]{background:#2e7d32;} 
-.topic[data-prefix="Очікування"]{background:#fff;color:#000;} 
-.topic[data-prefix="Схвалено"]{background:#1976d2;} 
-#overlay,#registerOverlay,#roleOverlay,#playersOverlay,#actionOverlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;}
-#editor,#registerBox,#roleBox,#playersBox,#actionBox{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:90%;max-width:700px;background:#0f111a;padding:20px;border-radius:10px;z-index:1001;}
-input,textarea,select{width:100%;background:#1f2236;border:none;color:#fff;padding:10px;margin-bottom:10px;border-radius:5px;}
-table{width:100%;border-collapse:collapse;margin-top:10px;}
-th,td{padding:8px;border-bottom:1px solid #333;text-align:left;}
-.status-online{color:#0f0;}
-.status-offline{color:#f00;}
-a.forum-link{color:#4da6ff;font-weight:600;text-decoration:none;}
-a.external-link{color:#ff4d4d;font-weight:600;text-decoration:underline;}
+body{margin:0;font-family:Arial;background:#0f111a;color:#eee}
+header{background:#151826;padding:15px;display:flex;justify-content:space-between}
+button{background:#ff6a00;border:none;color:#fff;padding:8px 12px;border-radius:5px;cursor:pointer}
+.container{max-width:900px;margin:20px auto;background:#151826;padding:15px;border-radius:10px}
+.topic{background:#1f2236;padding:10px;margin:5px 0;border-radius:5px;cursor:pointer}
+.comment{background:#1c1f33;padding:8px;margin-top:5px;border-radius:5px}
+.reply{margin-left:20px;background:#222654}
+input,textarea{width:100%;background:#1f2236;border:none;color:#fff;padding:8px;border-radius:5px;margin:5px 0}
 </style>
 </head>
 <body>
 
 <header>
-<div id="headerLeft">
-  <span>Форум</span>
-  <button id="rolesBtn" style="display:none;" onclick="openRoleManager()">Ролі</button>
-  <button id="playersBtn" onclick="openPlayers()">Гравці</button>
-</div>
-<div id="userAccount">
-  <img id="avatar" src="">
-  <span id="username"></span>
-  <span id="userRole" style="font-size:14px;color:#aaa"></span>
-  <button onclick="logout()">Вийти</button>
-  <input type="file" id="avatarInput" accept="image/*" style="display:none">
-</div>
+  <b>Форум</b>
+  <span id="user"></span>
 </header>
 
-<div class="container" id="forum">
-  <div class="tabs">
-    <div class="tab active" onclick="switchTab('rules')">Правила</div>
-    <div class="tab" onclick="switchTab('database')">База даних</div>
-    <div class="tab" onclick="switchTab('senior')">Старші</div>
-  </div>
-  <button class="create-btn" onclick="openEditor()">➕ Створити тему</button>
-  <button class="create-btn" onclick="openRegister()">📝 Реєстрація</button>
+<div class="container" id="auth">
+  <h3>Реєстрація</h3>
+  <input id="nick" placeholder="Введіть нік">
+  <button onclick="register()">Зареєструватися</button>
+</div>
+
+<div class="container" id="forum" style="display:none">
+  <h3>Створити тему</h3>
+  <input id="title" placeholder="Заголовок">
+  <textarea id="text" placeholder="Текст"></textarea>
+  <button onclick="createTopic()">Опублікувати</button>
+  <hr>
   <div id="topics"></div>
 </div>
 
-<div id="threadView" style="display:none;"></div>
+<div class="container" id="thread" style="display:none"></div>
 
-<!-- Створення теми -->
-<div id="overlay"></div>
-<div id="editor">
-<h2>Створити тему</h2>
-<input id="topicTitle" placeholder="Заголовок теми">
-<select id="topicPrefix">
-<option value="Головне">🟢 Головне</option>
-<option value="Очікування">⚪ Очікування</option>
-<option value="Схвалено">🔵 Схвалено</option>
-</select>
-<textarea id="topicText" rows="6" placeholder="Текст теми"></textarea>
-<button class="create-btn" onclick="publish()">Опублікувати</button>
-<button class="create-btn" onclick="closeEditor()">Скасувати</button>
-</div>
-
-<!-- Регістрація -->
-<div id="registerOverlay"></div>
-<div id="registerBox">
-<h2>Реєстрація</h2>
-<input id="regUsername" placeholder="Введіть нік">
-<button class="create-btn" onclick="registerUser()">Зареєструватися</button>
-<button class="create-btn" onclick="closeRegister()">Скасувати</button>
-</div>
-
-<!-- Ролі -->
-<div id="roleOverlay"></div>
-<div id="roleBox">
-<h2>Управління користувачами</h2>
-<select id="roleUserSelect"></select>
-<select id="roleSelect">
-<option value="Гравець">Гравець</option>
-<option value="Модератор">Модератор</option>
-<option value="Адміністратор">Адміністратор</option>
-</select>
-<select id="punishSelect">
-<option value="">Без покарання</option>
-<option value="mute">Мут</option>
-<option value="ban">Бан</option>
-</select>
-<button class="create-btn" onclick="assignRoleAndPunish()">Застосувати</button>
-<button class="create-btn" onclick="closeRoleManager()">Скасувати</button>
-</div>
-
-<!-- Гравці -->
-<div id="playersOverlay"></div>
-<div id="playersBox">
-<h2>Гравці Форуму</h2>
-<table id="playersTable"><tr><th>Ім'я</th><th>Статус</th></tr></table>
-<button class="create-btn" onclick="closePlayers()">Закрити</button>
-</div>
-
-<!-- Firebase SDK -->
+<!-- Firebase -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
 <script>
-// ====== Firebase Config ======
 const firebaseConfig = {
   apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-  databaseURL: "https://YOUR_PROJECT_ID-default-rtdb.firebaseio.com",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_PROJECT_ID.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  authDomain: "YOUR_PROJECT.firebaseapp.com",
+  databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
+  projectId: "YOUR_PROJECT",
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-// ====== USERS ======
-let currentUser = null;
+let user = localStorage.getItem("user");
 
-function openRegister(){
-  document.getElementById('registerOverlay').style.display='block';
-  document.getElementById('registerBox').style.display='block';
+if(user){
+  document.getElementById("auth").style.display="none";
+  document.getElementById("forum").style.display="block";
+  document.getElementById("user").innerText = user;
 }
 
-function closeRegister(){
-  document.getElementById('registerOverlay').style.display='none';
-  document.getElementById('registerBox').style.display='none';
-}
-
-function registerUser(){
-  const nickInput = document.getElementById('regUsername');
-  const nick = nickInput.value.trim();
-  if(!nick) return alert('Введіть нік!');
-  
-  const userRef = db.ref('users/' + nick);
-  userRef.get().then(snap => {
-    if(snap.exists()) {
-      alert('Нік вже зайнятий!');
-    } else {
-      const userData = { role:'Гравець', avatar:'https://via.placeholder.com/40', online:true };
-      userRef.set(userData).then(() => {
-        currentUser = nick;
-        localStorage.setItem('forumUser', nick);
-        setupUserInterface();
-        closeRegister();
-      }).catch(err => console.error(err));
-    }
-  }).catch(err => console.error(err));
-}
-
-function setupUserInterface(){
-  if(!currentUser) currentUser = localStorage.getItem('forumUser');
-  if(!currentUser) return openRegister();
-  const userRef = db.ref('users/'+currentUser);
-  userRef.update({online:true});
-  userRef.on('value',snap=>{
-    const u = snap.val();
-    if(!u) return;
-    document.getElementById('username').textContent = currentUser;
-    document.getElementById('userRole').textContent = u.role;
-    document.getElementById('avatar').src = u.avatar;
-    if(u.role==='Адміністратор') document.getElementById('rolesBtn').style.display='inline-block';
+function register(){
+  const n = nick.value.trim();
+  if(!n) return alert("Введи нік");
+  db.ref("users/"+n).get().then(s=>{
+    if(s.exists()) return alert("Нік зайнятий");
+    db.ref("users/"+n).set({online:true});
+    localStorage.setItem("user",n);
+    location.reload();
   });
 }
 
-// Аватарка
-document.getElementById('avatar').onclick = ()=>document.getElementById('avatarInput').click();
-document.getElementById('avatarInput').addEventListener('change',function(){
-  const file=this.files[0];
-  if(file){
-    const reader=new FileReader();
-    reader.onload=function(e){
-      document.getElementById('avatar').src=e.target.result;
-      db.ref('users/'+currentUser+'/avatar').set(e.target.result);
-    };
-    reader.readAsDataURL(file);
-  }
+function createTopic(){
+  db.ref("topics").push({
+    title:title.value,
+    text:text.value,
+    author:user,
+    time:Date.now()
+  });
+  title.value=""; text.value="";
+}
+
+db.ref("topics").on("value",snap=>{
+  topics.innerHTML="";
+  snap.forEach(t=>{
+    const d=document.createElement("div");
+    d.className="topic";
+    d.innerHTML=`<b>${t.val().title}</b><br>${t.val().author}`;
+    d.onclick=()=>openTopic(t.key);
+    topics.appendChild(d);
+  });
 });
 
-function logout(){
-  db.ref('users/'+currentUser+'/online').set(false);
-  localStorage.removeItem('forumUser');
-  location.reload();
-}
+function openTopic(id){
+  forum.style.display="none";
+  thread.style.display="block";
+  db.ref("topics/"+id).on("value",snap=>{
+    const t=snap.val();
+    thread.innerHTML=`
+      <button onclick="back()">⬅ Назад</button>
+      <h3>${t.title}</h3>
+      <p>${t.text}</p>
+      <small>${t.author}</small>
+      <hr>
+      <input id="cText" placeholder="Коментар">
+      <button onclick="addComment('${id}')">Надіслати</button>
+      <div id="comments"></div>
+    `;
+  });
 
-// ====== FORUM ======
-let currentTab='rules';
-function switchTab(tab){ 
-  currentTab=tab; 
-  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active')); 
-  event.target.classList.add('active'); 
-  render(); 
-}
+  db.ref("comments/"+id).on("value",s=>{
+    comments.innerHTML="";
+    s.forEach(c=>{
+      const d=document.createElement("div");
+      d.className="comment";
+      d.innerHTML=`<b>${c.val().author}</b>: ${c.val().text}
+      <br><input placeholder="Відповідь" onkeydown="reply(event,'${id}','${c.key}')">`;
+      comments.appendChild(d);
 
-function openEditor(){overlay.style.display='block';editor.style.display='block';}
-function closeEditor(){overlay.style.display='none';editor.style.display='none';}
-
-function publish(){
-  const title = document.getElementById('topicTitle').value.trim();
-  const text = document.getElementById('topicText').value.trim();
-  const prefix = document.getElementById('topicPrefix').value;
-  if(!title||!text) return alert('Заповніть все');
-  const id = Date.now();
-  db.ref('topics/'+currentTab+'/'+id).set({id,title,text,prefix,author:currentUser});
-  closeEditor();
-  document.getElementById('topicTitle').value='';
-  document.getElementById('topicText').value='';
-}
-
-// ====== THREAD ======
-function render(){
-  const box = document.getElementById('topics');
-  box.innerHTML='';
-  db.ref('topics/'+currentTab).on('value',snap=>{
-    box.innerHTML='';
-    snap.forEach(child=>{
-      const t = child.val();
-      const div = document.createElement('div');
-      div.className='topic';
-      div.dataset.prefix = t.prefix;
-      div.textContent = t.title;
-      div.onclick = ()=>openThread(t.id);
-      box.appendChild(div);
+      db.ref("replies/"+c.key).on("value",r=>{
+        r.forEach(x=>{
+          const rr=document.createElement("div");
+          rr.className="comment reply";
+          rr.innerHTML=`<b>${x.val().author}</b>: ${x.val().text}`;
+          d.appendChild(rr);
+        });
+      });
     });
   });
 }
 
-function openThread(id){
-  db.ref('topics/'+currentTab+'/'+id).once('value').then(snap=>{
-    const t = snap.val();
-    if(!t) return;
-    document.getElementById('forum').style.display='none';
-    document.getElementById('threadView').style.display='block';
-    document.getElementById('threadView').innerHTML = `
-      <header style="display:flex;justify-content:space-between;align-items:center;">
-        <span>${t.title}</span>
-        <div>
-          <button onclick="closeThread()">⬅ Назад</button>
-        </div>
-      </header>
-      <div class="container">
-        <p style="white-space:pre-wrap;">${t.text}</p>
-        <p style="font-size:14px;color:#aaa;">Автор: ${t.author}</p>
-      </div>
-    `;
+function addComment(id){
+  db.ref("comments/"+id).push({
+    author:user,
+    text:cText.value
   });
+  cText.value="";
 }
 
-function closeThread(){ 
-  document.getElementById('threadView').style.display='none'; 
-  document.getElementById('forum').style.display='block'; 
+function reply(e,tid,cid){
+  if(e.key==="Enter"){
+    db.ref("replies/"+cid).push({
+      author:user,
+      text:e.target.value
+    });
+    e.target.value="";
+  }
 }
 
-// ====== INITIALIZE ======
-setupUserInterface();
-render();
-
+function back(){
+  thread.style.display="none";
+  forum.style.display="block";
+}
 </script>
 </body>
 </html>
