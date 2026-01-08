@@ -1,0 +1,14 @@
+<h2>Реєстрація</h2>
+<input id="regEmail" placeholder="Email">
+<input id="regPassword" type="password" placeholder="Пароль">
+<input id="regUsername" placeholder="Ім'я Прізвище">
+<button class="create-btn" onclick="registerUser()">Зареєструватися</button>
+
+<hr>
+
+<h2>Вхід</h2>
+<input id="loginEmail" placeholder="Email">
+<input id="loginPassword" type="password" placeholder="Пароль">
+<button class="create-btn" onclick="loginUser()">Увійти</button>
+
+<button class="create-btn" onclick="closeRegister()">Скасувати</button>
