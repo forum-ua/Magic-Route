@@ -6,21 +6,23 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <style>
-body{margin:0;font-family:Arial;background:#0f111a;color:#eee}
+body{margin:0;font-family:Arial;background:#0f111a;color:#eee;overflow-x:hidden}
 header{background:#151826;padding:15px 20px;display:flex;justify-content:space-between;align-items:center}
 .container{max-width:900px;margin:20px auto;background:#151826;padding:15px;border-radius:10px}
 button{background:#ff6a00;border:none;color:#fff;padding:8px 12px;border-radius:5px;cursor:pointer}
 input,textarea{width:100%;background:#1f2236;border:none;color:#fff;padding:10px;border-radius:5px;margin-bottom:10px}
-.topic{background:#1f2236;padding:10px;margin-bottom:8px;border-radius:5px;cursor:pointer}
-.comment{background:#101320;padding:8px;border-radius:5px;margin:5px 0}
+.topic{background:#1f2236;padding:10px;margin-bottom:8px;border-radius:5px}
+.comment{background:#0f111a;padding:8px;border-radius:5px;margin:5px 0}
 .small{font-size:12px;color:#aaa}
-.online{color:#0f0}
-.offline{color:#f00}
+#authBox{max-width:400px}
+.snow{position:fixed;top:-10px;color:#fff;font-size:14px;animation:fall linear infinite;z-index:9999}
+@keyframes fall{to{transform:translateY(110vh)}}
 </style>
 
 <!-- Firebase -->
-<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
-<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 </head>
 
 <body>
@@ -30,139 +32,137 @@ input,textarea{width:100%;background:#1f2236;border:none;color:#fff;padding:10px
   <div id="userBar"></div>
 </header>
 
-<div class="container" id="forum">
-  <button onclick="openEditor()">➕ Створити тему</button>
+<div class="container" id="authBox" style="display:none">
+  <h3>Реєстрація / Вхід</h3>
+  <input id="email" placeholder="Email">
+  <input id="password" type="password" placeholder="Пароль">
+  <input id="nickname" placeholder="Ім'я Прізвище (для реєстрації)">
+  <button onclick="register()">Зареєструватися</button>
+  <button onclick="login()">Увійти</button>
+</div>
+
+<div class="container" id="forum" style="display:none">
+  <button onclick="createTopic()">➕ Створити тему</button>
   <div id="topics"></div>
 </div>
 
-<!-- Реєстрація -->
-<div id="registerBox" style="display:none" class="container">
-  <h3>Реєстрація</h3>
-  <input id="nickInput" placeholder="Ім'я Призвище">
-  <button onclick="register()">Зареєструватися</button>
-</div>
-
 <script>
-/* ===== FIREBASE CONFIG (ВСТАВ СВОЄ) ===== */
+/* ===== FIREBASE (ВСТАВ СВОЄ) ===== */
 firebase.initializeApp({
   apiKey: "ВАШ_API_KEY",
-  authDomain: "ВАШ_DOMAIN",
+  authDomain: "ВАШ_AUTH_DOMAIN",
   databaseURL: "ВАШ_DATABASE_URL",
   projectId: "ВАШ_PROJECT_ID"
 });
+const auth = firebase.auth();
 const db = firebase.database();
 
-/* ===== USER ===== */
-let user = localStorage.getItem("forum_user");
-const userBar = document.getElementById("userBar");
+/* ===== AUTH ===== */
+const userBar=document.getElementById("userBar");
+auth.onAuthStateChanged(user=>{
+  if(user){
+    db.ref("users/"+user.uid).once("value").then(s=>{
+      const data=s.val();
+      userBar.innerHTML=`${data.nick} (${data.role}) <button onclick="logout()">Вийти</button>`;
+      forum.style.display="block";
+      authBox.style.display="none";
+      loadTopics();
+    });
+  }else{
+    userBar.innerHTML=`<button onclick="showAuth()">Вхід / Реєстрація</button>`;
+    forum.style.display="none";
+  }
+});
 
-if(!user){
-  userBar.innerHTML = `<button onclick="showRegister()">📝 Реєстрація</button>`;
-}else{
-  userBar.innerHTML = `<b>${user}</b> <span id="status"></span> <button onclick="logout()">Вийти</button>`;
-  setOnline(true);
-}
-
-/* ===== REGISTRATION ===== */
-function showRegister(){
-  registerBox.style.display="block";
-}
+function showAuth(){authBox.style.display="block"}
 
 function register(){
-  const nick = nickInput.value.trim();
-  const regex = /^[А-ЯІЇЄҐA-Z][а-яіїєґa-z']+\s[А-ЯІЇЄҐA-Z][а-яіїєґa-z']+$/;
+  const emailV=email.value.trim();
+  const pass=password.value;
+  const nick=nickname.value.trim();
+  const re=/^[А-ЯІЇЄҐ][а-яіїєґ']+\s[А-ЯІЇЄҐ][а-яіїєґ']+$/;
+  if(!re.test(nick)) return alert("Формат ніку: Ім'я Прізвище");
 
-  if(!regex.test(nick)){
-    alert("Формат: Ім'я Призвище");
-    return;
-  }
-
-  localStorage.setItem("forum_user", nick);
-
-  db.ref("users").push({
-    nick: nick,
-    role: "Гравець",
-    online: true
-  });
-
-  location.reload();
+  auth.createUserWithEmailAndPassword(emailV,pass).then(res=>{
+    db.ref("users/"+res.user.uid).set({
+      nick:nick,
+      role:"Гравець"
+    });
+  }).catch(e=>alert(e.message));
 }
 
-/* ===== ONLINE ===== */
-function setOnline(state){
-  db.ref("presence/"+user).set(state);
-  document.getElementById("status").innerHTML =
-    state ? `<span class="online">online</span>` : `<span class="offline">offline</span>`;
-
-  window.addEventListener("beforeunload",()=>{
-    db.ref("presence/"+user).set(false);
-  });
+function login(){
+  auth.signInWithEmailAndPassword(email.value,password.value)
+  .catch(e=>alert(e.message));
 }
 
-/* ===== LOGOUT ===== */
-function logout(){
-  db.ref("presence/"+user).set(false);
-  localStorage.removeItem("forum_user");
-  location.reload();
-}
+function logout(){auth.signOut()}
 
-/* ===== TOPICS REALTIME ===== */
-db.ref("topics").on("value",snap=>{
-  const box=document.getElementById("topics");
-  box.innerHTML="";
-  snap.forEach(s=>{
-    const t=s.val();
-    const d=document.createElement("div");
-    d.className="topic";
-    d.innerHTML=`
-      <b>${t.title}</b>
-      <div class="small">від ${t.author}</div>
-      <div id="c_${s.key}"></div>
-      <textarea id="ci_${s.key}" placeholder="Коментар"></textarea>
-      <button onclick="comment('${s.key}')">Надіслати</button>
-    `;
-    box.prepend(d);
+/* ===== FORUM ===== */
+function loadTopics(){
+  db.ref("topics").on("value",snap=>{
+    topics.innerHTML="";
+    snap.forEach(s=>{
+      const t=s.val();
+      const d=document.createElement("div");
+      d.className="topic";
+      d.innerHTML=`
+        <b>${t.title}</b>
+        <div class="small">від ${t.author}</div>
+        <div id="c_${s.key}"></div>
+        <textarea id="ci_${s.key}" placeholder="Коментар"></textarea>
+        <button onclick="sendComment('${s.key}')">Надіслати</button>
+      `;
+      topics.prepend(d);
 
-    db.ref("comments/"+s.key).on("value",cs=>{
-      const cbox=document.getElementById("c_"+s.key);
-      cbox.innerHTML="";
-      cs.forEach(c=>{
-        const cd=document.createElement("div");
-        cd.className="comment";
-        cd.innerHTML=`<b>${c.val().author}:</b> ${c.val().text}`;
-        cbox.appendChild(cd);
+      db.ref("comments/"+s.key).on("value",cs=>{
+        const cb=document.getElementById("c_"+s.key);
+        cb.innerHTML="";
+        cs.forEach(c=>{
+          cb.innerHTML+=`<div class="comment"><b>${c.val().author}:</b> ${c.val().text}</div>`;
+        });
       });
     });
   });
-});
+}
 
-/* ===== CREATE TOPIC ===== */
-function openEditor(){
-  if(!user){ showRegister(); return; }
-  const title=prompt("Заголовок теми");
+function createTopic(){
+  const title=prompt("Заголовок");
   const text=prompt("Текст");
   if(!title||!text) return;
-
-  db.ref("topics").push({
-    title:title,
-    text:text,
-    author:user,
-    time:Date.now()
+  auth.currentUser && db.ref("users/"+auth.currentUser.uid).once("value").then(s=>{
+    db.ref("topics").push({
+      title:title,
+      text:text,
+      author:s.val().nick,
+      time:Date.now()
+    });
   });
 }
 
-/* ===== COMMENT ===== */
-function comment(id){
+function sendComment(id){
   const input=document.getElementById("ci_"+id);
   if(!input.value) return;
-
-  db.ref("comments/"+id).push({
-    author:user,
-    text:input.value,
-    time:Date.now()
+  db.ref("users/"+auth.currentUser.uid).once("value").then(s=>{
+    db.ref("comments/"+id).push({
+      author:s.val().nick,
+      text:input.value,
+      time:Date.now()
+    });
+    input.value="";
   });
-  input.value="";
 }
+
+/* ===== SNOW ===== */
+setInterval(()=>{
+  const s=document.createElement("div");
+  s.className="snow";
+  s.style.left=Math.random()*100+"vw";
+  s.style.animationDuration=3+Math.random()*5+"s";
+  s.innerText="❄";
+  document.body.appendChild(s);
+  setTimeout(()=>s.remove(),8000);
+},200);
 </script>
 
 </body>
